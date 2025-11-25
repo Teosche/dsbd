@@ -1,6 +1,8 @@
 import os
 import time
 import threading
+from typing import Optional, Any
+
 import requests
 import grpc
 from datetime import datetime, timedelta
@@ -20,17 +22,17 @@ app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL")
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db.init_app(app)
 
-OPENSKY_API_URL = "https://opensky-network.org/api"
-OPENSKY_USER = os.environ.get("OPENSKY_USER")
-OPENSKY_PASS = os.environ.get("OPENSKY_PASS")
+OPENSKY_API_URL: str = "https://opensky-network.org/api"
+OPENSKY_USER: Optional[str] = os.environ.get("OPENSKY_USER")
+OPENSKY_PASS: Optional[str] = os.environ.get("OPENSKY_PASS")
 
-USER_MANAGER_GRPC_HOST = 'user-manager:50051'
+USER_MANAGER_GRPC_HOST: str = 'user-manager:50051'
 
 with app.app_context():
     db.create_all()
 
 
-def check_user_exists_grpc(email):
+def check_user_exists_grpc(email: str) -> bool:
     if not service_pb2_grpc:
         return True
 
@@ -44,7 +46,7 @@ def check_user_exists_grpc(email):
         return False
 
 
-def fetch_flights_for_airport(airport_code, mode='arrival'):
+def fetch_flights_for_airport(airport_code: str, mode: str = 'arrival') -> list:
     end_time = int(time.time())
     begin_time = end_time - 4200
 
@@ -55,7 +57,7 @@ def fetch_flights_for_airport(airport_code, mode='arrival'):
         'end': end_time
     }
 
-    auth = None
+    auth: Optional[tuple[str, str]] = None
     if OPENSKY_USER and OPENSKY_PASS:
         auth = (OPENSKY_USER, OPENSKY_PASS)
 
@@ -71,12 +73,12 @@ def fetch_flights_for_airport(airport_code, mode='arrival'):
         return []
 
 
-def data_collection_job():
+def data_collection_job() -> None:
     while True:
         print("Starting data collection cycle...")
         with app.app_context():
             interests = db.session.query(UserInterest.airport_code).distinct().all()
-            unique_airports = [i[0] for i in interests]
+            unique_airports: list[str] = [i[0] for i in interests]
 
             for airport in unique_airports:
                 print(f"Processing airport: {airport}")
@@ -91,10 +93,13 @@ def data_collection_job():
         time.sleep(3600)
 
 
-def save_flight_data(flights_json, airport_code=None, is_arrival=None):
+def save_flight_data(flights_json: list,
+                     airport_code: Optional[str] = None,
+                     is_arrival: Optional[bool] = None
+                     ) -> None:
     for f in flights_json:
-        icao24 = f.get('icao24')
-        first_seen = datetime.fromtimestamp(f.get('firstSeen'))
+        icao24: Optional[str] = f.get('icao24')
+        first_seen: Optional[datetime] = datetime.fromtimestamp(f.get('firstSeen'))
 
         existing = db.session.query(FlightData).filter_by(
             icao24=icao24,
@@ -102,11 +107,14 @@ def save_flight_data(flights_json, airport_code=None, is_arrival=None):
         ).first()
 
         if not existing:
+            last_seen_ts: Optional[int] = f.get('lastSeen')
+            last_seen = datetime.fromtimestamp(last_seen_ts) if last_seen_ts else None
+
             flight = FlightData(
                 icao24=icao24,
                 first_seen=first_seen,
                 est_departure_airport=f.get('estDepartureAirport'),
-                last_seen=datetime.fromtimestamp(f.get('lastSeen')),
+                last_seen=last_seen,
                 est_arrival_airport=f.get('estArrivalAirport'),
                 callsign=f.get('callsign'),
                 est_departure_airport_horiz_distance=f.get('estDepartureAirportHorizDistance'),
@@ -126,9 +134,9 @@ def save_flight_data(flights_json, airport_code=None, is_arrival=None):
 
 @app.route('/interests', methods=['POST'])
 def add_interest():
-    data = request.get_json()
-    email = data.get('email')
-    airport_code = data.get('airport_code')
+    data: dict[str, Any] = request.get_json()
+    email: Optional[str] = data.get('email')
+    airport_code: Optional[str] = data.get('airport_code')
 
     if not email or not airport_code:
         return jsonify({'error': 'Missing email or airport_code'}), 400
@@ -148,7 +156,7 @@ def add_interest():
 
 @app.route('/flights/last/<string:airport_code>', methods=['GET'])
 def get_last_flight(airport_code):
-    mode = request.args.get('mode', 'arrival')
+    mode: str = request.args.get('mode', 'arrival')
 
     query = db.session.query(FlightData)
     if mode == 'arrival':
@@ -158,7 +166,7 @@ def get_last_flight(airport_code):
         query = query.filter(FlightData.est_departure_airport == airport_code)
         query = query.order_by(FlightData.first_seen.desc())
 
-    flight = query.first()
+    flight: Optional[FlightData] = query.first()
 
     if flight:
         return jsonify({
@@ -173,8 +181,8 @@ def get_last_flight(airport_code):
 
 @app.route('/stats/average/<string:airport_code>', methods=['GET'])
 def get_average_flights(airport_code):
-    days = int(request.args.get('days', 7))
-    mode = request.args.get('mode', 'arrival')
+    days: int = int(request.args.get('days', 7))
+    mode: str = request.args.get('mode', 'arrival')
 
     cutoff_date = datetime.now() - timedelta(days=days)
 

@@ -1,6 +1,8 @@
 import os
 import threading
 from concurrent import futures
+from typing import Optional, Any
+
 import grpc
 from flask import Flask, request, jsonify
 from sqlalchemy.exc import IntegrityError
@@ -24,7 +26,7 @@ with app.app_context():
 
 @app.route('/users', methods=['POST'])
 def add_user():
-    data = request.get_json()
+    data: Optional[dict[str, Any]] = request.get_json()
     if not data or 'email' not in data or 'nome' not in data or 'cognome' not in data:
         return jsonify({'error': 'Missing required fields'}), 400
 
@@ -57,8 +59,8 @@ def delete_user(email):
 
 
 @app.route('/users/<string:email>', methods=['GET'])
-def get_user(email):
-    user = db.session.get(User, email)
+def get_user(email: str):
+    user: Optional[User] = db.session.get(User, email)
     if user:
         return jsonify(user.to_dict()), 200
     return jsonify({'error': 'User not found'}), 404
