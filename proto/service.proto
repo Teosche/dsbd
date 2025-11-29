@@ -6,10 +6,19 @@ service UserService {
   rpc CheckUserExists (UserRequest) returns (UserResponse);
 }
 
+service DataCollectorService {
+  rpc DeleteUserInterests (UserRequest) returns (DeleteInterestsResponse);
+}
+
 message UserRequest {
   string email = 1;
 }
 
 message UserResponse {
   bool exists = 1;
+}
+
+message DeleteInterestsResponse {
+  bool success = 1;
+  int32 deleted_count = 2;
 }

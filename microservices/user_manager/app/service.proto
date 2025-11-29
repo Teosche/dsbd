@@ -2,10 +2,12 @@ syntax = "proto3";
 
 package service;
 
-// Servizio per la gestione degli utenti esposto da User Manager
 service UserService {
-  // Verifica se un utente esiste tramite email
   rpc CheckUserExists (UserRequest) returns (UserResponse);
+}
+
+service DataCollectorService {
+  rpc DeleteUserInterests (UserRequest) returns (DeleteInterestsResponse);
 }
 
 message UserRequest {
@@ -14,4 +16,9 @@ message UserRequest {
 
 message UserResponse {
   bool exists = 1;
+}
+
+message DeleteInterestsResponse {
+  bool success = 1;
+  int32 deleted_count = 2;
 }
