@@ -376,6 +376,52 @@ def get_flights(airport_code):
     return jsonify({"message": "No flights found"}), 404
 
 
+@app.route("/flights/average/<string:icao>", methods=["GET"])
+def get_average_flights(icao: str):
+    """Calculates the average number of flights per day for a given airport."""
+    # Subquery to get all flights for the given airport (arrivals and departures)
+    flights_query = db.session.query(FlightData).filter(
+        (FlightData.est_arrival_airport == icao)
+        | (FlightData.est_departure_airport == icao)
+    )
+
+    total_flights = flights_query.count()
+
+    if total_flights == 0:
+        return jsonify({"message": f"No flights found for airport {icao}"}), 404
+
+    # Calculate the number of distinct days
+    distinct_days = (
+        flights_query.with_entities(func.count(func.distinct(func.date(FlightData.first_seen)))).scalar()
+    )
+
+    if distinct_days == 0:
+        average = 0
+    else:
+        average = total_flights / distinct_days
+
+    return jsonify({"airport": icao, "average_flights_per_day": average})
+
+
+@app.route("/flights/last/<string:icao>", methods=["GET"])
+def get_last_flight(icao: str):
+    """Returns the last flight for a given airport (most recent last_seen)."""
+    last_flight = (
+        db.session.query(FlightData)
+        .filter(
+            (FlightData.est_arrival_airport == icao)
+            | (FlightData.est_departure_airport == icao)
+        )
+        .order_by(FlightData.last_seen.desc())
+        .first()
+    )
+
+    if last_flight:
+        return jsonify(last_flight.to_dict())
+    else:
+        return jsonify({"message": f"No flights found for airport {icao}"}), 404
+
+
 class DataCollectorService(
     service_pb2_grpc.DataCollectorServiceServicer if service_pb2_grpc else object
 ):
