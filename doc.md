@@ -99,6 +99,14 @@ The Python code in this project adheres to the **PEP 8** style guide to ensure c
     *   `tax_code` (String, Optional, Unique)
     *   `iban` (String, Optional)
 
+*   **`idempotency_keys` table**:
+    *   `key` (String, Primary Key) - The unique idempotency key provided by the client.
+    *   `status` (String) - Current status of the request (`in-progress`, `completed`).
+    *   `created_at` (DateTime) - Timestamp of when the key was created.
+    *   `response_code` (Integer, Optional) - HTTP status code of the cached response.
+    *   `response_body` (Text, Optional) - JSON body of the cached response.
+    *   `user_email` (String) - Email of the user associated with the request (not a foreign key).
+
 ### 5.2. Data Collector DB
 
 *   **`user_interests` table**:
@@ -152,3 +160,63 @@ docker compose up --build
 The services will be available at the following addresses:
 *   **User Manager**: `http://localhost:5001`
 *   **Data Collector**: `http://localhost:5002`
+
+## 7. At-Most-Once Semantics (Idempotency)
+
+To ensure robustness and prevent duplicate data processing in case of network failures or client retries, the system implements an "at-most-once" delivery guarantee for all state-changing operations in the `User Manager` service (`POST /users` and `DELETE /users/<email>`).
+
+### 7.1. Implementation Details
+
+The idempotency logic is handled at the application layer using a combination of a request header and a dedicated database table.
+
+1.  **Idempotency-Key Header**: The client must send a unique identifier for each state-changing request in an `Idempotency-Key` HTTP header.
+
+2.  **`idempotency_keys` Table**: A table in the `user_manager_db` is used to store the status and result of each request. The table includes the idempotency key, the status of the request (`in-progress` or `completed`), and the response body and status code that were originally returned.
+
+3.  **Execution Flow**:
+    *   When a request with an `Idempotency-Key` arrives, the server first checks the `idempotency_keys` table.
+    *   **If the key exists and its status is `completed`**, the server immediately returns the stored response without re-processing the request.
+    *   **If the key exists and its status is `in-progress`**, it means a concurrent request with the same key is being processed. The server returns a `409 Conflict` error to prevent a race condition.
+    *   **If the key does not exist**, the server creates a new entry in the table with the status `in-progress`, executes the business logic (e.g., creates the user), and then updates the entry with the status `completed` along with the final response body and code.
+
+This mechanism ensures that an operation is performed at most once, even if the client sends the same request multiple times.
+
+### 7.2. How to Test with Postman
+
+Here is a detailed guide on how to test the idempotency implementation.
+
+#### Initial Setup
+
+1.  **`Content-Type` Header**: For `POST` requests, set the `Content-Type` header to `application/json`.
+2.  **`Idempotency-Key` Header**: Add an `Idempotency-Key` header to your `POST /users` and `DELETE /users/<email>` requests.
+
+#### Scenario 1: Successful First Request
+
+1.  **Action**:
+    *   Create a `POST /users` request to `http://localhost:5001/users`.
+    *   In **Headers**, set `Idempotency-Key` to `{{$guid}}`. This Postman variable generates a new GUID for each request.
+    *   In the **Body**, provide the user's JSON data.
+    *   Send the request.
+2.  **Expected Result**: A `201 Created` response. The user and the idempotency key are stored in the database.
+
+#### Scenario 2: Repeated Request (Same Key)
+
+1.  **Action**:
+    *   Take the previous request. **Do not change the `Idempotency-Key`**. If you used `{{$guid}}`, copy the value that was actually sent and paste it as a static value or repeat the **scenario 1** forcing a key, for example: `3f9d2e1b-8c4a-4d6f-b1e2-5a7f8c2d9e4a`.
+    *   Send the request again.
+2.  **Expected Result**: An immediate `201 Created` response. The server returns the cached response, and no new user is created. You will not see a "duplicate key" error from the database in the service logs.
+
+#### Scenario 3: Creating a User That Already Exists (New Key)
+
+1.  **Action**:
+    *   Create a `POST /users` request for a user that already exists.
+    *   Use a **new** `Idempotency-Key` (e.g., use `{{$guid}}` again).
+    *   Send the request.
+2.  **Expected Result**: A `409 Conflict` response. The server attempts to create the user, the database reports a conflict, and this "conflict" result is then cached for the new idempotency key.
+
+#### Scenario 4: Request Without Idempotency Key
+
+1.  **Action**:
+    *   Disable or remove the `Idempotency-Key` header from the request.
+    *   Send it.
+2.  **Expected Result**: A `400 Bad Request` with an error message indicating that the header is required.

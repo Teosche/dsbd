@@ -16,6 +16,8 @@ This project is currently a **Work in Progress (WIP)** and is not intended for p
 
 ![Architectural Diagram](architecture.png)
 
+The system implements an **"at-most-once"** delivery policy for state-changing operations on the User Manager service, ensuring that requests are never processed more than once, even in the event of network retries.
+
 ## Documentation
 
 - The project guidelines are described in the `homework.pdf` file.
