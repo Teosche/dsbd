@@ -28,7 +28,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"email\": \"mario.rossi@gmail.com\",\n    \"nome\": \"Mario\",\n    \"cognome\": \"Rossi\",\n    \"codice_fiscale\": \"RSSMRA85D15Z404E\",\n    \"iban\": \"IT19Z1234567890000123456789\"\n}"
+							"raw": "{\n    \"email\": \"mario.rossi@gmail.com\",\n    \"first_name\": \"Mario\",\n    \"last_name\": \"Rossi\",\n    \"tax_code\": \"RSSMRA85D15Z404E\",\n    \"iban\": \"IT19Z1234567890000123456789\"\n}"
 						},
 						"url": {
 							"raw": "http://127.0.0.1:5001/users",
@@ -53,15 +53,15 @@
 						"method": "GET",
 						"header": [],
 						"url": {
-							"raw": "https://127.0.0.1:5000/ping",
-							"protocol": "https",
+							"raw": "http://127.0.0.1:5001/ping",
+							"protocol": "http",
 							"host": [
 								"127",
 								"0",
 								"0",
 								"1"
 							],
-							"port": "5000",
+							"port": "5001",
 							"path": [
 								"ping"
 							]
@@ -75,7 +75,7 @@
 						"method": "GET",
 						"header": [],
 						"url": {
-							"raw": "http://127.0.0.1:5001/users/mario.rossi@example.com",
+							"raw": "http://127.0.0.1:5001/users/mario.rossi@gmail.com",
 							"protocol": "http",
 							"host": [
 								"127",
@@ -86,7 +86,7 @@
 							"port": "5001",
 							"path": [
 								"users",
-								"mario.rossi@example.com"
+								"mario.rossi@gmail.com"
 							]
 						}
 					},
@@ -317,6 +317,22 @@
 								"ping"
 							]
 						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Flights Average",
+					"request": {
+						"method": "GET",
+						"header": []
+					},
+					"response": []
+				},
+				{
+					"name": "Get Last Flight",
+					"request": {
+						"method": "GET",
+						"header": []
 					},
 					"response": []
 				}
