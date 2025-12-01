@@ -1,0 +1,57 @@
+services:
+  user-manager:
+    build: ./microservices/user_manager
+    ports:
+      - "5001:5000"
+      - "50051:50051"
+    environment:
+      - DATABASE_URL=postgresql://${USER_DB_USER}:${USER_DB_PASSWORD}@user-db:5432/${USER_DB_NAME}
+    depends_on:
+      user-db:
+        condition: service_healthy
+  user-db:
+    image: postgres:13
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=${USER_DB_USER}
+      - POSTGRES_PASSWORD=${USER_DB_PASSWORD}
+      - POSTGRES_DB=${USER_DB_NAME}
+    volumes:
+      - user_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${USER_DB_USER} -d ${USER_DB_NAME}" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+  data-collector:
+    build: ./microservices/data_collector
+    ports:
+      - "5002:5000"
+      - "50052:50052"
+    environment:
+      - DATABASE_URL=postgresql://${DATA_DB_USER}:${DATA_DB_PASSWORD}@data-db:5432/${DATA_DB_NAME}
+      - OPEN_SKY_CLIENT_ID=${OPEN_SKY_CLIENT_ID}
+      - OPEN_SKY_CLIENT_SECRET=${OPEN_SKY_CLIENT_SECRET}
+    depends_on:
+      data-db:
+        condition: service_healthy
+  data-db:
+    image: postgres:13
+    ports:
+      - "5433:5432"
+    environment:
+      - POSTGRES_USER=${DATA_DB_USER}
+      - POSTGRES_PASSWORD=${DATA_DB_PASSWORD}
+      - POSTGRES_DB=${DATA_DB_NAME}
+    volumes:
+      - data_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${DATA_DB_USER} -d ${DATA_DB_NAME}" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  user_db_data:
+  data_db_data:
