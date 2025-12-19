@@ -55,7 +55,7 @@ The services themselves are decoupled via an **Apache Kafka** message broker, wh
 
 ### 2.2. Architectural Diagram
 
-![Architectural Diagram](architecture.png)
+![Architectural Diagram](diagrams/hw2_architecture.png)
 
 ## 3. Components
 
