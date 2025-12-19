@@ -1,4 +1,4 @@
-# dsbd_hw1
+# Distributed Systems and Big Data (DSBD) Homework
 
 This project is a distributed system designed to manage user information and collect/process flight data from the OpenSky Network through a microservices architecture.
 
