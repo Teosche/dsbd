@@ -18,3 +18,4 @@ requests
 python-dotenv
 pybreaker
 kafka-python
+prometheus-client
