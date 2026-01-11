@@ -26,13 +26,8 @@ from config import (
     KAFKA_TOPIC,
 )
 
-try:
-    import service_pb2
-    import service_pb2_grpc
-except ImportError:
-    import service_pb2
-    import service_pb2_grpc
-
+import service_pb2
+import service_pb2_grpc
 
 cached_token = None
 cached_expiry = 0
