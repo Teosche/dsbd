@@ -52,6 +52,7 @@ kind: Service
 metadata:
   name: user-manager
 spec:
+  type: NodePort
   selector:
     app: user-manager
   ports:
@@ -60,4 +61,4 @@ spec:
       targetPort: 5000
     - name: grpc
       port: 50051
-      targetPort: 50051s
+      targetPort: 50051

@@ -25,9 +25,9 @@ echo "[+] applying Kubernetes manifests..."
 kubectl apply -f kubernetes/
 
 echo "[!] waiting for deployments to be ready..."
-kubectl rollout status deployment/prometheus
-kubectl rollout status deployment/user-manager
-kubectl rollout status deployment/data-collector
+kubectl rollout status deployment/prometheus --timeout=90s
+kubectl rollout status deployment/user-manager --timeout=90s
+kubectl rollout status deployment/data-collector --timeout=90s
 
 echo "Deployment complete!"
 
