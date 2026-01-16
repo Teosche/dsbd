@@ -34,6 +34,11 @@ def get_db_session():
         return None
 
 
+def get_user_by_email(session, email):
+    """Synchronous helper to query user by email."""
+    return session.query(User).filter_by(email=email).first()
+
+
 async def main():
     """
     Main asynchronous routine.
@@ -62,44 +67,71 @@ async def main():
         auto_offset_reset="earliest",
     )
 
-    await consumer.start()
-    print("Connected to Kafka and started consumer.")
+    # Robust startup loop
+    while True:
+        try:
+            print("Attempting to connect to Kafka...")
+            await consumer.start()
+            print("Connected to Kafka.")
+            break
+        except Exception as e:
+            print(f"Failed to start consumer (Kafka might not be ready): {e}")
+            print("Retrying in 5 seconds...")
+            await asyncio.sleep(5)
 
+    # Wait for Topic to be created
+    while True:
+        partitions = await consumer.partitions_for_topic(CONSUMER_TOPIC)
+        if partitions:
+            print(f"Topic '{CONSUMER_TOPIC}' found with partitions: {partitions}")
+            break
+        print(f"Topic '{CONSUMER_TOPIC}' not found yet. Waiting...")
+        await asyncio.sleep(2)
+        await consumer.force_metadata_update()
+
+    print("Starting message consumption...")
     try:
         async for message in consumer:
-            data = message.value
-            print(f"Received notification: {data}")
-
-            user_email = data.get("user_email")
-            if not user_email:
-                continue
-
-            loop = asyncio.get_running_loop()
-            db_session = SessionFactory()
             try:
-                user = await loop.run_in_executor(
-                    None, db_session.query(User).filter_by(email=user_email).first
-                )
+                data = message.value
+                print(f"Received notification: {data}")
 
-                if user and user.telegram_chat_id:
-                    try:
-                        text_message = (
-                            f"🔔 *Flight Alert* 🔔\n\n"
-                            f"Airport: *{data.get('airport_code')}*\n\n"
-                            f"Details: {data.get('condition')}"
+                user_email = data.get("user_email")
+                if not user_email:
+                    continue
+
+                loop = asyncio.get_running_loop()
+                db_session = SessionFactory()
+                try:
+                    user = await loop.run_in_executor(
+                        None, get_user_by_email, db_session, user_email
+                    )
+
+                    if user and user.telegram_chat_id:
+                        try:
+                            text_message = (
+                                f"🔔 *Flight Alert* 🔔\n\n"
+                                f"Airport: *{data.get('airport_code')}*\n\n"
+                                f"Details: {data.get('condition')}"
+                            )
+                            await bot.send_message(
+                                chat_id=user.telegram_chat_id,
+                                text=text_message,
+                                parse_mode=telegram.constants.ParseMode.MARKDOWN,
+                            )
+                            print(f"Sent Telegram notification to {user_email}")
+                        except Exception as e:
+                            print(
+                                f"Failed to send Telegram message to {user_email}: {e}"
+                            )
+                    else:
+                        print(
+                            f"User {user_email} not found or has no Telegram chat ID."
                         )
-                        await bot.send_message(
-                            chat_id=user.telegram_chat_id,
-                            text=text_message,
-                            parse_mode=telegram.constants.ParseMode.MARKDOWN,
-                        )
-                        print(f"Sent Telegram notification to {user_email}")
-                    except Exception as e:
-                        print(f"Failed to send Telegram message to {user_email}: {e}")
-                else:
-                    print(f"User {user_email} not found or has no Telegram chat ID.")
-            finally:
-                await loop.run_in_executor(None, db_session.close)
+                finally:
+                    await loop.run_in_executor(None, db_session.close)
+            except Exception as e:
+                print(f"Error processing message: {e}")
 
     finally:
         await consumer.stop()
