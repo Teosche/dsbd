@@ -1,41 +1,70 @@
 #!/bin/bash
 
-set -euo
+set -euo pipefail
 
-# We use minikube to provide a complete local k8s cluster and an integrated Docker daemon.
-# Then we can build images and use them immediately in the cluster without having to push them to a registry.
+# We use kind (Kubernetes in Docker) to provide a local k8s cluster.
+# Kind runs the cluster inside Docker containers.
 
-# brew install minikube
+# - Use cURL or package managers to install kind, for example: brew install kind (macOS)
 
-# or just use dpkg for Debian systems:
-# https://minikube.sigs.k8s.io/docs/start/?arch=%2Flinux%2Fx86-64%2Fstable%2Fdebian+package
-if ! minikube status >/dev/null 2>&1; then
-    minikube start
+CLUSTER_NAME="flight-tracker"
+
+if kind get clusters 2>/dev/null | grep -q "^${CLUSTER_NAME}$"; then
+    echo "[!] kind cluster '${CLUSTER_NAME}' already exists."
 else
-    echo "[!] minikube already started."
+    echo "[+] creating kind cluster '${CLUSTER_NAME}'..."
+    cat <<EOF | kind create cluster --name ${CLUSTER_NAME} --config=-
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+- role: control-plane
+  extraPortMappings:
+  - containerPort: 30090
+    hostPort: 30090
+    protocol: TCP
+  - containerPort: 30000
+    hostPort: 30000
+    protocol: TCP
+EOF
 fi
 
-eval $(minikube docker-env)
-
-echo "[+] building Docker images..."
+echo "[+] building Docker images and loading into kind..."
 docker build -t user-manager:latest ./microservices/user_manager
 docker build -t data-collector:latest ./microservices/data_collector
+docker build -t alert-system:latest ./microservices/alert_system
+docker build -t alert-notifier-system:latest ./microservices/alert_notifier_system
 
-echo "[+] applying Kubernetes manifests..."
+kind load docker-image user-manager:latest --name ${CLUSTER_NAME}
+kind load docker-image data-collector:latest --name ${CLUSTER_NAME}
+kind load docker-image alert-system:latest --name ${CLUSTER_NAME}
+kind load docker-image alert-notifier-system:latest --name ${CLUSTER_NAME}
+
+echo "[+] applying k8s manifests..."
 kubectl apply -f kubernetes/
 
-echo "[!] waiting for deployments to be ready..."
+echo "[*] waiting for deployments to be ready..."
+kubectl wait --for=condition=ready pod -l app=zookeeper --timeout=90s
+kubectl wait --for=condition=ready pod -l app=kafka --timeout=90s
+kubectl wait --for=condition=ready pod -l app=user-db --timeout=90s
+kubectl wait --for=condition=ready pod -l app=data-db --timeout=90s
 kubectl rollout status deployment/prometheus --timeout=90s
 kubectl rollout status deployment/user-manager --timeout=90s
 kubectl rollout status deployment/data-collector --timeout=90s
-
-echo "Deployment complete!"
-
-PROM_URL=$(minikube service prometheus --url)
-USER_MANAGER_PORT=$(kubectl get svc user-manager -o jsonpath='{.spec.ports[0].nodePort}')
-MINIKUBE_IP=$(minikube ip)
+kubectl rollout status deployment/alert-system --timeout=90s
+kubectl rollout status deployment/alert-notifier-system --timeout=90s
 
 echo ""
-echo "Prometheus UI: $PROM_URL"
-echo "User Manager metrics -> http://$MINIKUBE_IP:$USER_MANAGER_PORT/metrics"
+echo "==============================================="
+echo "Deployment complete!"
+echo "==============================================="
+echo ""
+echo "Prometheus UI: http://localhost:30090"
+echo "User Manager metrics: http://localhost:30000/metrics"
+echo ""
+echo "To access services:"
+echo "  kubectl port-forward svc/user-manager 5000:5000"
+echo "  kubectl port-forward svc/data-collector 5001:5000"
+echo ""
+echo "To delete the cluster:"
+echo "  kind delete cluster --name ${CLUSTER_NAME}"
 echo ""
