@@ -51,13 +51,13 @@ async def main():
         print("Could not create DB session factory. Exiting.")
         return
 
+    bot = None
     try:
         bot = telegram.Bot(token=TELEGRAM_BOT_TOKEN)
         bot_info = await bot.get_me()
         print(f"Connected to Telegram Bot: {bot_info.first_name}")
     except Exception as e:
-        print(f"Could not connect to Telegram: {e}. Exiting.")
-        return
+        print(f"Warning: Could not connect to Telegram: {e}")
 
     consumer = AIOKafkaConsumer(
         CONSUMER_TOPIC,
@@ -113,22 +113,25 @@ async def main():
                     )
 
                     if user and user.telegram_chat_id:
-                        try:
-                            text_message = (
-                                f"🔔 *Flight Alert* 🔔\n\n"
-                                f"Airport: *{data.get('airport_code')}*\n\n"
-                                f"Details: {data.get('condition')}"
-                            )
-                            await bot.send_message(
-                                chat_id=user.telegram_chat_id,
-                                text=text_message,
-                                parse_mode=telegram.constants.ParseMode.MARKDOWN,
-                            )
-                            print(f"Sent Telegram notification to {user_email}")
-                        except Exception as e:
-                            print(
-                                f"Failed to send Telegram message to {user_email}: {e}"
-                            )
+                        if bot:
+                            try:
+                                text_message = (
+                                    f"🔔 *Flight Alert* 🔔\n\n"
+                                    f"Airport: *{data.get('airport_code')}*\n\n"
+                                    f"Details: {data.get('condition')}"
+                                )
+                                await bot.send_message(
+                                    chat_id=user.telegram_chat_id,
+                                    text=text_message,
+                                    parse_mode=telegram.constants.ParseMode.MARKDOWN,
+                                )
+                                print(f"Sent Telegram notification to {user_email}")
+                            except Exception as e:
+                                print(
+                                    f"Failed to send Telegram message to {user_email}: {e}"
+                                )
+                        else:
+                            print(f"Telegram Bot not configured. Cannot send message to {user_email}.")
                     else:
                         print(
                             f"User {user_email} not found or has no Telegram chat ID."
@@ -144,15 +147,9 @@ async def main():
 
 
 async def run_app():
-    """Waits for Kafka to be ready and then runs the main application."""
-
-    print("Waiting for 20 seconds to ensure Kafka is ready...")
-
-    await asyncio.sleep(20)
-
+    """Starts the main application directly (removed long sleep)."""
     await main()
 
 
 if __name__ == "__main__":
-
     asyncio.run(run_app())
