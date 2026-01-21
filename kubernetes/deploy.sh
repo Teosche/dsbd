@@ -21,9 +21,15 @@ usage() {
 
 stop_port_forward() {
     echo "[*] Stopping existing port-forwarding processes..."
-    # We use pkill with a specific pattern to avoid killing other unrelated kubectl commands
-    pgrep -f "kubectl port-forward svc/(user-manager|data-collector|alert-system|alert-notifier-system)" | xargs kill -9 2>/dev/null
-    echo "[!] Port-forwarding stopped."
+    # We use pgrep with || true because it returns 1 if no processes match, 
+    # which would trigger 'set -e' and stop the script.
+    PIDS=$(pgrep -f "kubectl port-forward svc/(user-manager|data-collector|alert-system|alert-notifier-system)") || true
+    if [ -n "$PIDS" ]; then
+        echo "$PIDS" | xargs kill -9 2>/dev/null || true
+        echo "[!] Port-forwarding stopped."
+    else
+        echo "[!] No existing port-forwarding processes found."
+    fi
 }
 
 delete_cluster() {
