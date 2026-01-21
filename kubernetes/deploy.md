@@ -13,7 +13,11 @@ Run these commands in separate terminal windows:
 
 ### Monitoring Access
 - **Prometheus UI**: [http://localhost:30090](http://localhost:30090)
-- **User Manager Metrics**: [http://localhost:30000/metrics](http://localhost:30000/metrics)
+- **Metrics (via NodePort or Port-Forward)**:
+  - **User Manager**: [http://localhost:30000/metrics](http://localhost:30000/metrics) (NodePort) or [http://localhost:5000/metrics](http://localhost:5000/metrics)
+  - **Data Collector**: [http://localhost:5001/metrics](http://localhost:5001/metrics)
+  - **Alert System**: [http://localhost:5002/metrics](http://localhost:5002/metrics)
+  - **Alert Notifier**: [http://localhost:5003/metrics](http://localhost:5003/metrics)
 
 ---
 
@@ -44,13 +48,22 @@ Use these examples to test the cluster once port-forwarding is active.
 | **Last Flight**    | `curl http://localhost:5001/flights/last/LICC`                                                                                                                                      |
 | **Ping**           | `curl http://localhost:5001/ping`                                                                                                                                                   |
 
+### Alert & Notifier Systems (Internal)
+
+These systems primarily process background data but can be reached for health checks:
+
+| Service            | Ping Command                      | Metrics Command                      |
+|:-------------------|:----------------------------------|:-------------------------------------|
+| **Alert System**   | `curl http://localhost:5002/ping` | `curl http://localhost:5002/metrics` |
+| **Alert Notifier** | `curl http://localhost:5003/ping` | `curl http://localhost:5003/metrics` |
+
 ---
 
 ## 3. Monitoring with Prometheus
 
 ### Service Health
 1. Open [http://localhost:30090](http://localhost:30090).
-2. Go to **Status** -> **Targets**.
+2. Go to **Status** → **Targets**.
 3. All endpoints (`user-manager`, `data-collector`, `alert-system`, `alert-notifier-system`) should show as **UP**.
 
 ### Useful Prometheus Queries
@@ -60,6 +73,26 @@ Paste these into the **Graph** tab:
 - **Data Collection Volume**: `flights_fetched_total`
 - **Kafka Alert Processing**: `rate(messages_processed_total[5m])`
 - **Telegram Success Rate**: `sum(notifications_sent_total{status="success"}) / sum(notifications_sent_total)`
+
+---
+
+## 4. End-to-End test: triggering an alert
+
+To verify that everything is working (Kafka + Alert System + Notifier + Prometheus):
+
+1. **Setup user & interest**:
+   ```bash
+   # Add a user with your Telegram ID
+   curl -X POST http://localhost:5000/users/telegram -H "Content-Type: application/json" -d '{"email": "test@test.com", "telegram_chat_id": "12345678"}'
+   
+   # Add an interest with low thresholds to trigger an alert immediately
+   curl -X POST http://localhost:5001/interests -H "Content-Type: application/json" -d '{"email": "test@test.com", "airport_code": "LIRP", "high_value": 0, "low_value": -1}'
+   ```
+2. **Observe the flow**:
+   * **Alert System**: Should detect that `flight_count > 0` (high_value) and send a notification to Kafka.
+   * **Alert Notifier**: Should receive the notification and attempt to send a Telegram message.
+3. **Check Prometheus**:
+   * Query `messages_processed_total` and `notifications_sent_total`.
 
 ---
 
