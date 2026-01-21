@@ -8,6 +8,8 @@ Since the services run inside a Kubernetes cluster (Kind), you can access them u
 Run these commands in separate terminal windows:
 - **User Manager**: `kubectl port-forward svc/user-manager 5000:5000`
 - **Data Collector**: `kubectl port-forward svc/data-collector 5001:5000`
+- **Alert System**: `kubectl port-forward svc/alert-system 5002:5000`
+- **Alert Notifier**: `kubectl port-forward svc/alert-notifier-system 5003:5000`
 
 ### Monitoring Access
 - **Prometheus UI**: [http://localhost:30090](http://localhost:30090)
@@ -49,13 +51,15 @@ Use these examples to test the cluster once port-forwarding is active.
 ### Service Health
 1. Open [http://localhost:30090](http://localhost:30090).
 2. Go to **Status** -> **Targets**.
-3. All endpoints (`user-manager`, `data-collector`) should show as **UP**.
+3. All endpoints (`user-manager`, `data-collector`, `alert-system`, `alert-notifier-system`) should show as **UP**.
 
 ### Useful Prometheus Queries
 Paste these into the **Graph** tab:
 - **Request Traffic**: `rate(http_requests_total{service="user-manager"}[1m])`
 - **External API Latency**: `opensky_api_call_duration_seconds`
 - **Data Collection Volume**: `flights_fetched_total`
+- **Kafka Alert Processing**: `rate(messages_processed_total[5m])`
+- **Telegram Success Rate**: `sum(notifications_sent_total{status="success"}) / sum(notifications_sent_total)`
 
 ---
 
