@@ -16,6 +16,7 @@ usage() {
     echo ""
     echo "Options for 'up':"
     echo "  --pf, --port-forward    Automatically start port-forwarding after deployment."
+    echo "  --ingress               Install NGINX Ingress Controller and enable Ingress access."
     echo ""
 }
 
@@ -40,8 +41,12 @@ delete_cluster() {
 
 deploy() {
     START_PF=false
+    INSTALL_INGRESS=false
     if [[ "$*" == *"--pf"* ]] || [[ "$*" == *"--port-forward"* ]]; then
         START_PF=true
+    fi
+    if [[ "$*" == *"--ingress"* ]]; then
+        INSTALL_INGRESS=true
     fi
 
     if kind get clusters 2>/dev/null | grep -q "^${CLUSTER_NAME}$"; then
@@ -53,14 +58,50 @@ kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 nodes:
 - role: control-plane
+  kubeadmConfigPatches:
+  - |
+    kind: InitConfiguration
+    nodeRegistration:
+      kubeletExtraArgs:
+        node-labels: "ingress-ready=true"
   extraPortMappings:
+  # Prometheus NodePort
   - containerPort: 30090
     hostPort: 30090
     protocol: TCP
+  # User Manager NodePort
   - containerPort: 30000
     hostPort: 30000
     protocol: TCP
+  # HTTP for Ingress
+  - containerPort: 80
+    hostPort: 80
+    protocol: TCP
+  # HTTPS for Ingress
+  - containerPort: 443
+    hostPort: 443
+    protocol: TCP
 EOF
+    fi
+
+    if [ "$INSTALL_INGRESS" = true ]; then
+        echo "[+] Installing NGINX Ingress Controller..."
+        kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
+        
+        echo "[*] Waiting for Ingress Controller namespace to be ready..."
+        sleep 5
+        
+        echo "[*] Waiting for Ingress Controller deployment..."
+        until kubectl get deployment -n ingress-nginx ingress-nginx-controller &>/dev/null; do
+            echo "    Waiting for ingress-nginx-controller deployment to be created..."
+            sleep 3
+        done
+        
+        echo "[*] Waiting for Ingress Controller pod to be ready..."
+        kubectl wait --namespace ingress-nginx \
+            --for=condition=ready pod \
+            --selector=app.kubernetes.io/component=controller \
+            --timeout=180s
     fi
 
     echo "[+] building Docker images..."
@@ -98,6 +139,13 @@ EOF
     echo "Prometheus UI: http://localhost:30090"
     echo "User Manager metrics: http://localhost:30000/metrics"
 
+    if [ "$INSTALL_INGRESS" = true ]; then
+        echo ""
+        echo "Ingress enabled! Access services via:"
+        echo "    - User Manager:   curl http://localhost/user-manager/ping"
+        echo "    - Data Collector: curl http://localhost/data-collector/ping"
+    fi
+
     if [ "$START_PF" = true ]; then
         stop_port_forward # Clean up old ones first!
         echo "[+] Starting port-forwarding in background..."
@@ -110,9 +158,10 @@ EOF
         echo "    - Alert System: http://localhost:5002"
         echo "    - Alert Notifier: http://localhost:5003"
     else
-        echo ""
-        echo "To access services via direct port-forward, run with --pf or use:"
-        echo "  kubectl port-forward svc/user-manager 5000:5000"
+        if [ "$INSTALL_INGRESS" = false ]; then
+            echo ""
+            echo "To access services via direct port-forward, run with --pf"
+        fi
     fi
     echo ""
 }
