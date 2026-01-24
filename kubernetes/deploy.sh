@@ -73,6 +73,18 @@ nodes:
   - containerPort: 30000
     hostPort: 30000
     protocol: TCP
+  # Data Collector NodePort
+  - containerPort: 30001
+    hostPort: 30001
+    protocol: TCP
+  # Alert System NodePort
+  - containerPort: 30002
+    hostPort: 30002
+    protocol: TCP
+  # Alert Notifier System NodePort
+  - containerPort: 30003
+    hostPort: 30003
+    protocol: TCP
   # HTTP for Ingress
   - containerPort: 80
     hostPort: 80
@@ -138,6 +150,12 @@ EOF
     echo ""
     echo "Prometheus UI: http://localhost:30090"
     echo "User Manager metrics: http://localhost:30000/metrics"
+
+    echo ""
+    echo "[+] Seeding database..."
+    chmod +x kubernetes/seed.sh
+    ./kubernetes/seed.sh
+    echo "[!] Database seeding complete."
 
     if [ "$INSTALL_INGRESS" = true ]; then
         echo ""
