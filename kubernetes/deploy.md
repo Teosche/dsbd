@@ -105,7 +105,26 @@ Access the UI at: [http://localhost:30090](http://localhost:30090)
 
 ---
 
-## 6. End-to-End Test: Triggering an Alert
+## 6. Configuration & Credentials
+
+### API Keys
+The system requires valid credentials for external services. You have two options:
+1.  **Create your own**: 
+    *   **Telegram**: Use [BotFather](https://t.me/botfather) to create a bot and get a token.
+    *   **OpenSky**: Register for a free account at [OpenSky Network](https://opensky-network.org/).
+2.  **Request from authors**: You can contact the authors (Dario or Matteo) to receive testing credentials.
+
+Update the `opensky-secrets` and `telegram-secrets` sections in `kubernetes/secrets.yaml` with your keys.
+
+### Infrastructure
+The deployment includes:
+- **PostgreSQL**: Two instances (User DB, Data DB).
+- **Kafka & Zookeeper**: For asynchronous messaging.
+- **Prometheus**: For metrics collection.
+
+---
+
+## 7. End-to-End Test: Triggering an Alert
 
 To verify that the entire pipeline is working (from User Manager to Telegram Notification), follow this procedure.
 
@@ -155,15 +174,40 @@ The system checks for flights every 5 minutes. If the flight count exceeds the `
 
 ---
 
-## 7. Troubleshooting
+## 8. Advanced Troubleshooting
 
-**View Logs:**
-```bash
-kubectl logs -l app=alert-notifier-system --tail=50
-kubectl logs -l app=kafka --tail=50
-```
+### 1. Kafka or Database Connectivity
+If logs show `Could not connect to Kafka` or DB errors:
+*   **Cause**: Infrastructure services might take longer to start than the microservices.
+*   **Solution**: Force a restart of the application pods:
+    ```bash
+    kubectl rollout restart deployment/user-manager deployment/data-collector deployment/alert-system deployment/alert-notifier-system
+    ```
 
-**Cleanup:**
+### 2. Prometheus Metrics Missing
+If targets are shown as **DOWN** in the Prometheus UI:
+*   **Verification**: Ensure the service is healthy by calling the NodePort endpoint directly: `curl http://localhost:30000/metrics`.
+*   **Check**: Verify that the pod annotations for scraping are present in the deployment manifests.
+
+### 3. Port Conflicts
+If `deploy.sh` fails during cluster creation:
+*   **Cause**: Local ports 80, 443, or 30000-30003 are already in use by other processes.
+*   **Solution**: Stop conflicting services or run `./kubernetes/deploy.sh down` to clean up old cluster remnants.
+
+### 4. Telegram Notifications Not Received
+*   **Bot Interaction**: You must start a conversation with **@sky_dsbd_bot** (send `/start`) before the bot can send you messages.
+*   **Secrets**: Double-check that the token in `secrets.yaml` is correct and has no trailing spaces.
+*   **Logs**: Check the notifier logs: `kubectl logs -l app=alert-notifier-system`.
+
+### 5. Mock Data Fallback
+If flight data seems repetitive or "simulated":
+*   **Reason**: The system automatically switches to **Mock Data** if the OpenSky API is unreachable or rate-limited.
+*   **Verification**: Check the `data-collector` logs for `Falling back to mock data`.
+
+---
+
+## 9. Cleanup
+To completely remove the environment:
 ```bash
 ./kubernetes/deploy.sh down
 ```
