@@ -65,9 +65,11 @@ kind: Service
 metadata:
   name: alert-system
 spec:
+  type: NodePort
   selector:
     app: alert-system
   ports:
     - name: http
       port: 5000
       targetPort: 5000
+      nodePort: 30002
