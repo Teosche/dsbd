@@ -1,6 +1,6 @@
 # Project Documentation
 
-# Table of Contents
+                # Table of Contents
 
 - [1. Introduction](#1-introduction)
 - [2. System Architecture](#2-system-architecture)
@@ -104,6 +104,10 @@ The services themselves are decoupled via an **Apache Kafka** message broker, wh
     *   `GET /flights/last/<icao>`: Returns the most recent flight recorded for an airport.
 
 *   **Circuit Breaker**: All calls to the OpenSky Network API are wrapped in a Circuit Breaker (using `pybreaker`). If the API fails 5 consecutive times, the circuit opens for 60 seconds to allow the external service to recover.
+
+*   **Mock Data Generator**: To ensure system continuity even when the OpenSky API is unavailable (or the request limit is reached), the service includes a fallback mechanism. If the API call fails or the circuit is open, the service generates realistic mock flight data. This feature is particularly useful for development and testing purposes, allowing the entire pipeline (alerts, notifications) to function without external dependencies.
+
+*   **Background Job**: A background thread runs every **5 minutes**. It iterates through all unique airports stored in the user interests, fetches the latest flight data (via API or mock), saves it to the database, and triggers the alert evaluation process by sending messages to Kafka.
 
 *   **Kafka Producer**: After fetching flight data, it produces a message to the `to-alert-system` Kafka topic for each relevant user interest.
 
@@ -230,23 +234,26 @@ This will create the necessary `.key` and `.crt` files in the `nginx/ssl/` direc
 
 ### 6.4. Running the Application
 
-The project includes a helper script to automate the deployment process on a local Kind cluster.
+The project includes a helper script to automate the deployment process on a local Kind cluster. You can view the full usage information by running `./kubernetes/deploy.sh -h`.
 
 1.  **Make the script executable**:
     ```bash
-    chmod +x setup_cluster.sh
+    chmod +x kubernetes/deploy.sh
     ```
 
-2.  **Run the setup script**:
+2.  **Run the deployment script**:
     ```bash
-    ./setup_cluster.sh
+    ./kubernetes/deploy.sh [ACTION] [OPTIONS]
     ```
-    This script will:
-    *   Create a Kind cluster named `dsbd-cluster` (if missing).
-    *   Build the Docker images for all services.
-    *   Load the images into the Kind cluster.
-    *   Install the NGINX Ingress Controller.
-    *   Apply all Kubernetes manifests (Deployments, Services, Secrets, Ingress, Prometheus).
+
+    **Actions:**
+    *   `up` (default): Create cluster, build images, and deploy.
+    *   `down`: Delete the kind cluster.
+    *   `stop-pf`: Stop all active port-forwarding processes.
+
+    **Options for 'up':**
+    *   `--pf`, `--port-forward`: Automatically start port-forwarding after deployment to access services on localhost ports (5000-5003).
+    *   `--ingress`: Install NGINX Ingress Controller and enable Ingress access on port 80/443.
 
 3.  **Verify Deployment**:
     Check the status of the pods:
@@ -255,7 +262,8 @@ The project includes a helper script to automate the deployment process on a loc
     ```
     Wait until all pods are in the `Running` state.
 
-The services are accessible via Ingress at **`https://localhost`**. HTTP traffic is automatically redirected to HTTPS.
+    If you used `--ingress`, the services are accessible via Ingress at **`https://localhost`** (HTTP traffic is redirected).
+    If you used `--pf`, services are at **`http://localhost:5000`**, etc.
 
 ### 6.5. Testing with Postman
 
