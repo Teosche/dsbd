@@ -4,6 +4,13 @@ CLUSTER_NAME="flight-tracker"
 SERVICES=("user-manager" "data-collector" "alert-system" "alert-notifier-system")
 PF_PORTS=("5000:5000" "5001:5000" "5002:5000" "5003:5000")
 
+TIMEOUT_POD_READY=600 # 5 mins, we may increase it to 600 for slow environments or CI/CD pipelines.
+TIMEOUT_DEPLOYMENT=600
+TIMEOUT_INGRESS=300
+
+LOG_DIR="logs"
+mkdir -p "$LOG_DIR"
+
 set -euo pipefail
 
 usage() {
@@ -40,6 +47,16 @@ delete_cluster() {
 }
 
 deploy() {
+    mkdir -p "$LOG_DIR"
+    LOG_FILE="$LOG_DIR/${CLUSTER_NAME}-$(date +%Y%m%d-%H%M%S).log"
+    exec > >(tee -a "$LOG_FILE") 2>&1
+
+    echo "==============================================="
+    echo "[*] Deployment started at $(date)"
+    echo "[*] Logging to: $LOG_FILE"
+    echo "==============================================="
+    echo ""
+
     START_PF=false
     INSTALL_INGRESS=false
     if [[ "$*" == *"--pf"* ]] || [[ "$*" == *"--port-forward"* ]]; then
@@ -93,6 +110,8 @@ nodes:
   - containerPort: 443
     hostPort: 443
     protocol: TCP
+- role: worker
+- role: worker
 EOF
     fi
 
@@ -113,7 +132,7 @@ EOF
         kubectl wait --namespace ingress-nginx \
             --for=condition=ready pod \
             --selector=app.kubernetes.io/component=controller \
-            --timeout=180s
+            --timeout=${TIMEOUT_INGRESS}s
     fi
 
     echo "[+] building Docker images..."
@@ -132,16 +151,16 @@ EOF
     kubectl apply -f kubernetes/
 
     echo "[*] waiting for deployments to be ready..."
-    kubectl wait --for=condition=ready pod -l app=zookeeper --timeout=300s
-    kubectl wait --for=condition=ready pod -l app=kafka --timeout=300s
-    kubectl wait --for=condition=ready pod -l app=user-db --timeout=300s
-    kubectl wait --for=condition=ready pod -l app=data-db --timeout=300s
+    kubectl wait --for=condition=ready pod -l app=zookeeper --timeout=${TIMEOUT_POD_READY}s
+    kubectl wait --for=condition=ready pod -l app=kafka --timeout=${TIMEOUT_POD_READY}s
+    kubectl wait --for=condition=ready pod -l app=user-db --timeout=${TIMEOUT_POD_READY}s
+    kubectl wait --for=condition=ready pod -l app=data-db --timeout=${TIMEOUT_POD_READY}s
 
     echo "[*] checking rollout status..."
     for svc in "${SERVICES[@]}"; do
-        kubectl rollout status deployment/"$svc" --timeout=300s
+        kubectl rollout status deployment/"$svc" --timeout=${TIMEOUT_DEPLOYMENT}s
     done
-    kubectl rollout status deployment/prometheus --timeout=300s
+    kubectl rollout status deployment/prometheus --timeout=${TIMEOUT_DEPLOYMENT}s
 
     echo ""
     echo "==============================================="
