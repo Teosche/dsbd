@@ -14,7 +14,6 @@ from metrics import track_requests, metrics_endpoint
 
 main = Blueprint("main", __name__)
 
-# Prometheus metrics endpoint.
 @main.route("/metrics")
 def metrics():
     return metrics_endpoint()

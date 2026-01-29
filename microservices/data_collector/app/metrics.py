@@ -11,42 +11,36 @@ from prometheus_client import Counter, Gauge, generate_latest, CONTENT_TYPE_LATE
 NODE_NAME = os.environ.get("NODE_NAME", os.environ.get("HOSTNAME", "unknown"))
 SERVICE_NAME = "data_collector"
 
-# COUNTER: Total number of HTTP requests received
 http_requests_total = Counter(
     "http_requests_total",
     "Total number of HTTP requests received",
     ["service", "node", "method", "endpoint", "status"]
 )
 
-# GAUGE: Response time of the last request (in seconds)
 http_request_duration_seconds = Gauge(
     "http_request_duration_seconds",
     "HTTP request duration (in seconds)",
     ["service", "node", "method", "endpoint"]
 )
 
-# GAUGE: Time taken to fetch data from OpenSky API
 opensky_api_duration_seconds = Gauge(
     "opensky_api_duration_seconds",
     "Time taken to fetch data from OpenSky API in seconds",
     ["service", "node", "airport_code"]
 )
 
-# COUNTER: Number of OpenSky API calls
 opensky_api_calls_total = Counter(
     "opensky_api_calls_total",
     "Total number of OpenSky API calls",
     ["service", "node", "status"]
 )
 
-# GAUGE: Number of flights fetched in the last collection
 flights_fetched_last_collection = Gauge(
     "flights_fetched_last_collection",
     "Number of flights fetched in the last data collection",
     ["service", "node", "airport_code"]
 )
 
-# GAUGE: Number of active requests
 http_requests_in_progress = Gauge(
     "http_requests_in_progress",
     "Number of HTTP requests currently being processed",

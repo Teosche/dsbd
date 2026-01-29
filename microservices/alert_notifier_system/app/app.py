@@ -82,7 +82,6 @@ async def main():
         auto_offset_reset="earliest",
     )
 
-    # Robust startup loop
     while True:
         try:
             print("Attempting to connect to Kafka...")
@@ -94,10 +93,8 @@ async def main():
             print("Retrying in 5 seconds...")
             await asyncio.sleep(5)
 
-    # Wait for Topic to be created
     while True:
         try:
-            # Refresh metadata to discover new topics
             await consumer._client.force_metadata_update()
             partitions = consumer.partitions_for_topic(CONSUMER_TOPIC)
             if partitions is not None and len(partitions) > 0:

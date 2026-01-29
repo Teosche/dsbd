@@ -11,21 +11,18 @@ from prometheus_client import Counter, Gauge, generate_latest, CONTENT_TYPE_LATE
 NODE_NAME = os.environ.get("NODE_NAME", os.environ.get("HOSTNAME", "unknown"))
 SERVICE_NAME = "user_manager"
 
-# COUNTER: Total number of HTTP requests received
 http_requests_total = Counter(
     "http_requests_total",
     "Total number of HTTP requests received",
     ["service", "node", "method", "endpoint", "status"]
 )
 
-# GAUGE: Response time of the last request (in seconds)
 http_request_duration_seconds = Gauge(
     "http_request_duration_seconds",
     "HTTP request duration (in seconds)",
     ["service", "node", "method", "endpoint"]
 )
 
-# Additional GAUGE: Number of active requests (optional, but useful for monitoring)
 http_requests_in_progress = Gauge(
     "http_requests_in_progress",
     "Number of HTTP requests currently being processed",

@@ -11,28 +11,24 @@ from prometheus_client import Counter, Gauge, generate_latest, CONTENT_TYPE_LATE
 NODE_NAME = os.environ.get("NODE_NAME", os.environ.get("HOSTNAME", "unknown"))
 SERVICE_NAME = "alert_notifier_system"
 
-# COUNTER: Total number of HTTP requests received
 http_requests_total = Counter(
     "http_requests_total",
     "Total number of HTTP requests received",
     ["service", "node", "method", "endpoint", "status"]
 )
 
-# GAUGE: Response time of the last request (in seconds)
 http_request_duration_seconds = Gauge(
     "http_request_duration_seconds",
     "HTTP request duration (in seconds)",
     ["service", "node", "method", "endpoint"]
 )
 
-# GAUGE: Number of active requests
 http_requests_in_progress = Gauge(
     "http_requests_in_progress",
     "Number of HTTP requests currently being processed",
     ["service", "node"]
 )
 
-# Custom metric for Alert Notifier System: Notifications sent
 notifications_sent_total = Counter(
     "notifications_sent_total",
     "Total number of notifications sent by alert_notifier_system",

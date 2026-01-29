@@ -66,11 +66,9 @@ def kafka_consumer_loop():
             track_message_processed(False)
 
 if __name__ == "__main__":
-    # Start Kafka consumer in a background thread
     kafka_thread = threading.Thread(target=kafka_consumer_loop, daemon=True)
     kafka_thread.start()
 
-    # Start Flask app
     app.run(host="0.0.0.0", port=5000)
 
 
