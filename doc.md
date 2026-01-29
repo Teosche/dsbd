@@ -142,19 +142,45 @@ The services themselves are decoupled via an **Apache Kafka** message broker, wh
     ```
     Once the command is running, the dashboard will be available at `http://localhost:9090`.
 
-## 4. Implementation Choices
+## 4. Implementation Choices & Design Rationale
 
-*   **Orchestration**: **Kubernetes** (locally via **Kind**) is used to manage the containerized application, providing scaling, self-healing, and service discovery.
-*   **Frameworks**: **Flask** is used for the `user-manager` and `data-collector` APIs.
-*   **API Gateway**: **Kubernetes Ingress (NGINX)** is used for routing and SSL termination.
-*   **Message Broker**: **Apache Kafka** is used for asynchronous messaging.
-*   **Resilience**: **PyBreaker** is used to implement the Circuit Breaker pattern.
-*   **Monitoring**: **Prometheus** is used for metrics collection.
-*   **Async**: **AIOKafka** and **Asyncio** are used in the `alert-notifier-system` for efficient, non-blocking I/O.
-*   **ORM**: **SQLAlchemy** is used as the Object-Relational Mapper (ORM).
-*   **Inter-service Communication**: **gRPC** was chosen for synchronous communication between the `User Manager` and `Data Collector`.
+This section details the technological stack and the architectural decisions taken during development, highlighting the trade-offs and motivations behind each choice.
 
-### 4.1 Coding Standards
+*   **Orchestration (Kubernetes & Kind)**: 
+    *   **Kubernetes** was chosen to provide a production-grade container orchestration environment, ensuring automatic scaling, self-healing, and service discovery.
+    *   For local development, we utilized **Kind (Kubernetes in Docker)**. We opted for a **Multi-Node Cluster** configuration consisting of **1 Control Plane node and 2 Worker nodes**. This setup simulates a realistic distributed environment, allowing Kubernetes to schedule pods across different nodes, thereby validating the system's resilience and networking capabilities in a scenario closer to a production deployment.
+
+*   **Language & Frameworks (Python & Flask)**: 
+    *   **Python** was selected for its rich ecosystem, particularly for data processing and API integration. 
+    *   **Flask** was chosen for the microservices (`user-manager`, `data-collector`) over heavier frameworks like Django because of its lightweight nature and flexibility. This allows for lower overhead and faster startup times, which are critical properties for microservices that might need to scale horizontally.
+
+*   **API Gateway (Kubernetes Ingress)**: 
+    *   **NGINX Ingress Controller** serves as the unified entry point for the cluster. It handles routing and SSL termination, abstracting the complexity of the internal network topology from the client. This centralization simplifies security policies and traffic management.
+
+*   **Message Broker (Apache Kafka)**: 
+    *   **Kafka** was chosen to implement the asynchronous, event-driven communication pattern between the Data Collector and the Alert System. Unlike simpler message queues (e.g., RabbitMQ), Kafka's log-based persistence ensures high durability and replayability of events, which is crucial for auditing and reliability in distributed alerting systems.
+
+*   **Database (PostgreSQL vs. Redis)**: 
+    *   **PostgreSQL** serves as the persistence layer for both microservices.
+    *   **Rationale for Idempotency**: While key-value stores like Redis are often used for idempotency keys due to their speed and TTL support, we implemented the idempotency check using a dedicated table in **PostgreSQL**. Since the application already required a relational database for user data, leveraging PostgreSQL for idempotency avoids introducing an additional infrastructure component (Redis) to manage and secure. The transactional integrity (ACID) of PostgreSQL ensures that the check-then-set operation for the idempotency token (provided by the client via a GUID) is atomic and consistent.
+
+*   **Inter-service Communication (gRPC)**: 
+    *   **gRPC** (using Protocol Buffers) was chosen for synchronous, internal communication between the `User Manager` and `Data Collector` (e.g., checking user existence). Compared to REST/JSON, gRPC offers lower latency, smaller payload size, and strict contract definition via `.proto` files, which reduces the risk of schema mismatch errors between services.
+
+*   **Resilience (PyBreaker)**: 
+    *   **PyBreaker** implements the Circuit Breaker pattern to protect the system from cascading failures when the external OpenSky Network API is unreachable or rate-limited.
+
+*   **Asynchronous I/O (AIOKafka & Asyncio)**: 
+    *   The `alert-notifier-system` utilizes **Asyncio** and **AIOKafka** to handle high-throughput I/O operations non-blockingly. This ensures that the service can process incoming Kafka messages and send Telegram network requests concurrently without being bottlenecked by network latency.
+
+### 4.1. Monitoring Strategy (Prometheus Labels)
+
+The monitoring system is designed to provide granular visibility into system behavior. We utilize custom labels to isolate performance bottlenecks and track specific logic flows:
+*   **`airport_code`**: This label is attached to the Data Collector metrics (e.g., `opensky_fetch_time`). It allows operators to distinguish whether high latency is a global issue or specific to fetching data for a particular airport (e.g., larger airports processing more flight data).
+*   **`service`**: Identifies the source microservice for generic metrics like HTTP requests, allowing aggregated views of health across the cluster.
+*   **`status`**: Used in notification metrics to track the success versus failure rate of Telegram API calls separately, enabling quick detection of authentication issues or API outages.
+
+### 4.2 Coding Standards
 
 The Python code in this project adheres to the **PEP 8** style guide to ensure consistency and readability. All docstrings for modules, classes, and functions are written to comply with the **PEP 257** standard, providing clear and comprehensive documentation directly within the code.
 

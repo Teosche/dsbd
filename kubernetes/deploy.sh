@@ -4,7 +4,7 @@ CLUSTER_NAME="flight-tracker"
 SERVICES=("user-manager" "data-collector" "alert-system" "alert-notifier-system")
 PF_PORTS=("5000:5000" "5001:5000" "5002:5000" "5003:5000")
 
-TIMEOUT_POD_READY=600 # 5 mins, we may increase it to 600 for slow environments or CI/CD pipelines.
+TIMEOUT_POD_READY=600
 TIMEOUT_DEPLOYMENT=600
 TIMEOUT_INGRESS=300
 
@@ -29,8 +29,6 @@ usage() {
 
 stop_port_forward() {
     echo "[*] Stopping existing port-forwarding processes..."
-    # We use pgrep with || true because it returns 1 if no processes match, 
-    # which would trigger 'set -e' and stop the script.
     PIDS=$(pgrep -f "kubectl port-forward svc/(user-manager|data-collector|alert-system|alert-notifier-system)") || true
     if [ -n "$PIDS" ]; then
         echo "$PIDS" | xargs kill -9 2>/dev/null || true
@@ -184,7 +182,7 @@ EOF
     fi
 
     if [ "$START_PF" = true ]; then
-        stop_port_forward # Clean up old ones first!
+        stop_port_forward 
         echo "[+] Starting port-forwarding in background..."
         for i in "${!SERVICES[@]}"; do
             kubectl port-forward "svc/${SERVICES[$i]}" "${PF_PORTS[$i]}" > /dev/null 2>&1 &
@@ -224,7 +222,7 @@ case $ACTION in
         usage
         ;;
     *)
-        # Default to deploy if first arg is a flag or empty
+        
         if [[ "$ACTION" == --* ]]; then
             deploy "$@"
         else
