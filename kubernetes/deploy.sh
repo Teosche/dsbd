@@ -108,8 +108,9 @@ nodes:
   - containerPort: 443
     hostPort: 443
     protocol: TCP
-- role: worker
-- role: worker
+# Uncomment the following lines to enable a multi-node cluster (1 CP + 2 Workers)
+# - role: worker
+# - role: worker
 EOF
     fi
 
