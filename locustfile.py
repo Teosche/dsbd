@@ -2,26 +2,39 @@ import uuid
 import random
 from locust import HttpUser, task, between
 
-# Configurazione dati di test
-AIRPORTS = ["LICC", "LIRF", "LIMC", "KJFK", "EGLL", "RJTT"]
+# Test Data Configuration
+AIRPORTS = ["LICC", "LIRF", "LIMC", "KJFK", "EGLL", "RJTT", "EDDF", "LFPG", "OMDB"]
 SEED_USER = "mario.rossi@gmail.com"
 
 
 class FlightTrackerLoadTester(HttpUser):
+    """
+    Main Load Tester class for the Flight Tracker System.
+    This class simulates virtual users interacting with the microservices architecture
+    deployed on Kubernetes. It covers both standard operational flows and stress scenarios.
+    """
+
     wait_time = between(1, 5)
 
     def on_start(self):
-        """Eseguito all'avvio di ogni utente virtuale."""
+        """
+        Setup routine executed when a virtual user is instantiated.
+        Generates a unique email and idempotency key for the session.
+        """
         self.user_email = f"test_{uuid.uuid4().hex[:8]}@example.com"
         self.idempotency_key = str(uuid.uuid4())
 
     @task(1)
     def health_check_all(self):
-        """Verifica lo stato di salute di tutti i servizi (Low Weight)."""
+        """
+        Task: System Health Verification.
+        Pings all exposed microservices (ports 30000-30003) to ensure they are reachable.
+        Uses catch_response to manually handle and log failures in the statistics.
+        """
         services = [30000, 30001, 30002, 30003]
         for port in services:
             with self.client.get(
-                f"http://localhost:{port}/ping",
+                f"http://127.0.0.1:{port}/ping",
                 name=f"Ping Port {port}",
                 catch_response=True,
             ) as response:
@@ -30,8 +43,13 @@ class FlightTrackerLoadTester(HttpUser):
 
     @task(5)
     def user_manager_lifecycle(self):
-        """Simula la creazione e la gestione di un utente (Port 30000)."""
-        # 1. Creazione Utente (Idempotente)
+        """
+        Task: User Management Lifecycle (Port 30000).
+        Simulates a standard user journey:
+        1. Create a new user account with a unique Idempotency-Key.
+        2. Retrieve the created user's profile information.
+        3. Update the user's Telegram Chat ID for notifications.
+        """
         payload = {
             "email": self.user_email,
             "first_name": "Locust",
@@ -40,21 +58,19 @@ class FlightTrackerLoadTester(HttpUser):
         headers = {"Idempotency-Key": self.idempotency_key}
 
         self.client.post(
-            "http://localhost:30000/users",
+            "http://127.0.0.1:30000/users",
             json=payload,
             headers=headers,
             name="UM: Create User",
         )
 
-        # 2. Lettura dati utente
         self.client.get(
-            f"http://localhost:30000/users/{self.user_email}",
+            f"http://127.0.0.1:30000/users/{self.user_email}",
             name="UM: Get User Profile",
         )
 
-        # 3. Aggiornamento Telegram (Simulato)
         self.client.post(
-            "http://localhost:30000/users/telegram",
+            "http://127.0.0.1:30000/users/telegram",
             json={
                 "email": self.user_email,
                 "telegram_chat_id": str(random.randint(100000, 999999)),
@@ -64,47 +80,59 @@ class FlightTrackerLoadTester(HttpUser):
 
     @task(10)
     def data_collector_read_ops(self):
-        """Simula la consultazione dei voli e interessi (Port 30001 - Heavy Read)."""
+        """
+        Task: Flight Data Exploration (Port 30001).
+        Performs frequent read-only operations on the Data Collector:
+        - Lists all flights for a random airport.
+        - Filters flights by arrival type.
+        - Requests calculated daily averages and the last recorded flight.
+        This task has a higher weight (10) to simulate heavy user traffic.
+        """
         airport = random.choice(AIRPORTS)
 
-        # 1. Visualizza voli per un aeroporto
         self.client.get(
-            f"http://localhost:30001/flights/{airport}", name="DC: Get Flights"
+            f"http://127.0.0.1:30001/flights/{airport}", name="DC: Get Flights"
         )
-
-        # 2. Visualizza voli con filtro (Arrivi/Partenze)
         self.client.get(
-            f"http://localhost:30001/flights/{airport}?type=arrivals",
+            f"http://127.0.0.1:30001/flights/{airport}?type=arrivals",
             name="DC: Get Arrivals",
         )
-
-        # 3. Controlla medie e statistiche
         self.client.get(
-            f"http://localhost:30001/flights/average/{airport}", name="DC: Get Average"
+            f"http://127.0.0.1:30001/flights/average/{airport}", name="DC: Get Average"
         )
         self.client.get(
-            f"http://localhost:30001/flights/last/{airport}", name="DC: Get Last Flight"
+            f"http://127.0.0.1:30001/flights/last/{airport}", name="DC: Get Last Flight"
         )
 
     @task(3)
     def trigger_alert_logic(self):
-        """Simula l'aggiunta di interessi per triggerare la logica Kafka/Alert (Port 30001)."""
+        """
+        Task: Notification Pipeline Trigger (Port 30001).
+        Adds an airport interest for the seed user. This action triggers the Data Collector
+        to produce messages to the 'to-alert-system' Kafka topic, initiating the
+        asynchronous alert evaluation flow.
+        """
         airport = random.choice(AIRPORTS)
         payload = {
-            "email": SEED_USER,  # Usiamo un utente esistente dal seed
+            "email": SEED_USER,
             "airport_code": airport,
             "high_value": random.randint(10, 50),
             "low_value": random.randint(0, 5),
         }
         self.client.post(
-            "http://localhost:30001/interests",
+            "http://127.0.0.1:30001/interests",
             json=payload,
             name="DC: Add/Update Interest",
         )
 
     @task(2)
     def test_idempotency_collision(self):
-        """Invia deliberatamente la stessa chiave per testare la cache di idempotenza."""
+        """
+        Task: Idempotency Verification.
+        Deliberately sends multiple requests with the exact same Idempotency-Key
+        to verify that the User Manager service returns cached responses and prevents
+        duplicate database entries (At-Most-Once semantics).
+        """
         payload = {
             "email": "duplicate@test.com",
             "first_name": "Dup",
@@ -112,11 +140,52 @@ class FlightTrackerLoadTester(HttpUser):
         }
         headers = {"Idempotency-Key": "fixed-test-key-123"}
 
-        # La prima volta può essere 201 o 409 (se già creato),
-        # la seconda deve restituire lo stesso risultato senza errori di DB.
         self.client.post(
-            "http://localhost:30000/users",
+            "http://127.0.0.1:30000/users",
             json=payload,
             headers=headers,
             name="UM: Idempotency Test",
+        )
+
+    @task(4)
+    def kafka_stress_test(self):
+        """
+        STRESS TEST 1: Kafka Producer Hammering.
+        Rapidly creates multiple interest entries for the seed user.
+        This focuses on saturating the Data Collector's internal producer threads and
+        filling the Kafka topics to monitor consumer group performance and potential lag.
+        """
+        for _ in range(5):
+            airport = random.choice(AIRPORTS)
+            payload = {
+                "email": SEED_USER,
+                "airport_code": airport,
+                "high_value": 100,
+                "low_value": 0,
+            }
+            self.client.post(
+                "http://127.0.0.1:30001/interests",
+                json=payload,
+                name="STRESS: Kafka Producer Flood",
+            )
+
+    @task(4)
+    def db_heavy_query_stress(self):
+        """
+        STRESS TEST 2: Database Heavy Aggregation.
+        Targets busy airport hubs to execute computationally expensive SQL queries:
+        - Calculating daily averages (requires scanning large datasets and date functions).
+        - Bulk fetching flight lists (requires high memory allocation and JSON serialization).
+        This test is designed to verify the stability of the Data Collector under DB pressure.
+        """
+        busy_airports = ["LIRF", "KJFK", "EGLL", "LFPG"]
+        target = random.choice(busy_airports)
+
+        self.client.get(
+            f"http://127.0.0.1:30001/flights/average/{target}",
+            name="STRESS: DB Heavy Avg Calculation",
+        )
+
+        self.client.get(
+            f"http://127.0.0.1:30001/flights/{target}", name="STRESS: DB Bulk Fetch"
         )
