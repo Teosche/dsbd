@@ -148,7 +148,7 @@ This section details the technological stack and the architectural decisions tak
 
 *   **Orchestration (Kubernetes & Kind)**: 
     *   **Kubernetes** was chosen to provide a production-grade container orchestration environment, ensuring automatic scaling, self-healing, and service discovery.
-    *   For local development, we utilized **Kind (Kubernetes in Docker)**. We opted for a **Multi-Node Cluster** configuration consisting of **1 Control Plane node and 2 Worker nodes**. This setup simulates a realistic distributed environment, allowing Kubernetes to schedule pods across different nodes, thereby validating the system's resilience and networking capabilities in a scenario closer to a production deployment.
+    *   For local development, we utilized **Kind (Kubernetes in Docker)**. The project defaults to a **Single-Node Cluster** configuration (acting as both control-plane and worker) to minimize resource consumption on developer machines. However, the deployment script (`deploy.sh`) includes commented-out configuration to easily switch to a **Multi-Node Cluster** (1 Control Plane + 2 Workers) to validate distributed behavior and networking policies in a more realistic scenario if hardware resources permit.
 
 *   **Language & Frameworks (Python & Flask)**: 
     *   **Python** was selected for its rich ecosystem, particularly for data processing and API integration. 
@@ -355,18 +355,31 @@ Here is a detailed guide on how to test the idempotency implementation.
     *   Send it.
 2.  **Expected Result**: A `400 Bad Request` with an error message indicating that the header is required.
 
-## 8. Asynchronous Notification Flow
+## 9. Load Testing & Performance Analysis
 
-The notification system is designed following an event-driven architecture, orchestrated by Apache Kafka. This approach decouples the primary services from the notification logic, leading to a more resilient and scalable system. If a notification service fails, the events remain in Kafka, ready to be processed once the service recovers, preventing data loss.
+To validate the system's resilience and scalability, we integrated **Locust**, a Python-based load testing tool.
 
-The flow is divided into three main stages: data production, alert evaluation, and notification dispatch.
+### 9.1. Running a Load Test
 
-1.  **Data Production**: A user registers an interest in an airport with specific alert thresholds (e.g., `LICC`, `high_value: 2`) by sending a `POST` request to `/data-collector/interests`. When the `data-collector`'s background job fetches new data from the OpenSky Network, it acts as a Kafka producer. For each user interest associated with that airport, it produces a JSON message to the `to-alert-system` topic with the relevant details: `{"user_email": "...", "airport_code": "LICC", "flight_count": 10, "high_value": 2, "low_value": 1}`.
+1.  **Start Locust**:
+    Run the following command from the project root:
+    ```bash
+    locust
+    ```
+2.  **Access Dashboard**: Open [http://localhost:8089](http://localhost:8089).
+3.  **Configure Swarm**:
+    *   **Users**: 100 (peak concurrency)
+    *   **Spawn Rate**: 10 (users/sec)
+    *   **Host**: `http://localhost:30000` (User Manager NodePort)
+4.  **Monitor**:
+    *   Observe the **RPS (Requests Per Second)** and **Failures** tab in Locust.
+    *   Correlate with **Prometheus** metrics at [http://localhost:30090](http://localhost:30090).
 
-2.  **Alert Evaluation**: The `alert-system` service, acting as a Kafka consumer, listens for messages on the `to-alert-system` topic. Upon receiving a message, it executes its sole business logic: it compares the `flight_count` against the `high_value` and `low_value`. In our example, `10` is greater than `2`, so the condition is met.
+### 9.2. Test Report: OOM Crash & Fix
 
-3.  **Notification Trigger**: Since the condition is met, the `alert-system` acts as a producer and sends a new, more specific message to the `to-notifier` topic. This message confirms that an alert must be sent and contains the necessary information: `{"user_email": "...", "airport_code": "LICC", "condition": "The number of flights (10) exceeded the high threshold of 2."}`.
+During the initial load test (100 users, 10 spawn rate), we observed a critical stability issue:
 
-4.  **Notification Dispatch**: The `alert-notifier-system` service consumes this final message from the `to-notifier` topic. It then performs a query on the `user_manager`'s database to find the `telegram_chat_id` corresponding to the user's email.
-
-5.  **Message Delivery**: Finally, using the retrieved Chat ID, the service connects to the Telegram Bot API and sends the formatted alert message directly to the user, completing the workflow.
+*   **Observation**: The `data-collector` pod crashed repeatedly (`CrashLoopBackOff`) after a few minutes of sustained load. Prometheus targets showed the service as `DOWN`, and Locust reported connection errors.
+*   **Root Cause Analysis**: Kubernetes logs revealed an **OOMKilled** (Out Of Memory) error with exit code **137**. The container had exceeded its hard limit of **256Mi**.
+*   **Resolution**: We increased the memory limit to **512Mi** in the `data-collector-deployment.yaml` manifest.
+*   **Verification**: A subsequent test ran successfully with **zero failures** over 1600+ requests. We observed that the `data-collector` exhibits higher latency (~1.5s) compared to the lightweight `user-manager` (~20ms), which is consistent with the heavier computational load of processing flight data.
